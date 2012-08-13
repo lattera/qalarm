@@ -24,6 +24,22 @@ QUEUE *Initialize_Queue(void)
 
 void Delete_Queue(QUEUE *queue)
 {
+    QUEUE_ITEM *qi, *next;
+    pthread_mutex_lock(&(queue->modify_mutex));
+
+    qi = queue->items;
+    while ((qi)) {
+        next = qi->next;
+
+        free(qi->action);
+        free(qi);
+
+        qi = next;
+        queue->numitems--;
+    }
+
+    queue->items = NULL;
+
     pthread_mutex_unlock(&(queue->modify_mutex));
     pthread_mutex_unlock(&(queue->read_mutex));
 
@@ -63,6 +79,9 @@ QUEUE_ITEM *Get_Queue_Item(QUEUE *queue)
 	QUEUE_ITEM *qi, *pqi;
 	
 	pthread_mutex_lock(&(queue->read_mutex));
+    if (Queue_Empty(queue))
+        return NULL;
+
 	pthread_mutex_lock(&(queue->modify_mutex));
 	
   if(!(qi = pqi = queue->items)) {
