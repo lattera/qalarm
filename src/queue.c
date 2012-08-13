@@ -22,6 +22,20 @@ QUEUE *Initialize_Queue(void)
 	return q;
 }
 
+void Delete_Queue(QUEUE *queue)
+{
+    pthread_mutex_unlock(&(queue->modify_mutex));
+    pthread_mutex_unlock(&(queue->read_mutex));
+
+    pthread_mutex_destroy(&(queue->modify_mutex));
+    pthread_mutex_destroy(&(queue->read_mutex));
+}
+
+int Queue_Empty(QUEUE *queue)
+{
+    return queue->numitems == 0;
+}
+
 void Add_Queue_Item(QUEUE *queue, char *action, void *data, size_t sz)
 {
 	QUEUE_ITEM *qi;

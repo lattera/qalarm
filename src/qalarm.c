@@ -49,6 +49,16 @@ void *main_alarm_handler(void *ctx)
 
             Free_Queue_Item(item);
             return NULL;
+        } else if (!strcmp(item->action, "Destroy")) {
+            if (item->sz != sizeof(pthread_t)) {
+                fprintf(stderr, "Destroy action: unknown size: %u. Expected %u\n", item->sz, sizeof(pthread_t));
+
+                Free_Queue_Item(item);
+                continue;
+            }
+
+            pthread_join(*((pthread_t *)(item->data)), NULL);
+            delete_alarm(q, *((pthread_t *)(item->data)));
         } else {
             fprintf(stderr, "Unknown action: %s\n", item->action);
         }
@@ -62,16 +72,32 @@ void *main_alarm_handler(void *ctx)
 void *inner_alarm_handler(void *ctx)
 {
     QTHREAD *qt = (QTHREAD *)ctx;
-    unsigned long nsecs;
+    time_t starttime;
+    time_t newtime;
     struct timeval t;
+    QUEUE_ITEM *item;
 
-    t.tv_sec = qt->timeout;
-    t.tv_usec = 0;
+    starttime = time(NULL);
+    newtime = qt->timeout;
+    while (time(NULL) - starttime < newtime) {
+        t.tv_sec = newtime < POLLSEC ? newtime : POLLSEC;
+        t.tv_usec = 0;
 
-    printf("New alarm, inner loop, tid: %d\n", qt->tid);
-    select(0, NULL, NULL, NULL, &t);
+        select(0, NULL, NULL, NULL, &t);
+        newtime = qt->timeout - (time(NULL) - starttime);
+
+        if (newtime > 0) {
+            if (!Queue_Empty(qt->queue)) {
+                item = Get_Queue_Item(qt->queue);
+                if (!strcmp(item->action, "Terminate"))
+                    return NULL;
+            }
+        }
+    }
 
     qt->cb(qt->data);
+    
+    Add_Queue_Item(qt->parent->queue, "Destroy", &(qt->tid), sizeof(pthread_t));
 
     return NULL;
 }
@@ -119,6 +145,27 @@ int add_alarm(QALARM *q, int nsecs, qalarm_cb cb, void *data)
     return 0;
 }
 
+void delete_alarm(QALARM *q, pthread_t tid)
+{
+    QTHREAD *qt;
+
+    pthread_mutex_lock(&(q->q_mutex));
+
+    qt = find_alarm(q, tid);
+    if ((qt->prev))
+        qt->prev->next = qt->next;
+    else
+        q->threads = qt->next;
+
+    if ((qt->next))
+        qt->next->prev = qt->prev;
+
+    pthread_mutex_unlock(&(q->q_mutex));
+
+    Delete_Queue(qt->queue);
+    free(qt);
+}
+
 QALARM *new_alarm(void)
 {
     QALARM *q;
@@ -156,18 +203,32 @@ void wait_alarms(QALARM *q)
 
 void alarmed(void *data)
 {
-    printf("KABOOM!\n");
+    int i=*((int *)data);
+
+    printf("KABOOM: %d!\n", i);
 }
 
 int main(int argc, char *argv[])
 {
     QALARM *qalarm;
     QTHREAD *qt;
+    int i, *j;
 
     qalarm = new_alarm();
-    add_alarm(qalarm, 5, alarmed, NULL);
+    for (i=0; i < 10; i++) {
+        j = malloc(sizeof(int));
+        if (j)
+            *j = i;
 
-    terminate_alarms(qalarm);
+        /* Alarm should activate anywhere between 0-2 seconds. */
+        add_alarm(qalarm, i%2, alarmed, j);
+    }
+
+    /* Yeah, I'm lazy */
+    if (argv[1])
+        terminate_alarms(qalarm);
+    else
+        wait_alarms(qalarm);
 
     return 0;
 }

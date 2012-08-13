@@ -34,5 +34,6 @@ typedef struct _qalarm {
 QALARM *new_alarm(void);
 int add_alarm(QALARM *, int, qalarm_cb, void *);
 void terminate_alarms(QALARM *);
+void delete_alarm(QALARM *, pthread_t);
 
 #endif

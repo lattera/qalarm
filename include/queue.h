@@ -24,6 +24,8 @@ typedef struct _queue
 QUEUE *Initialize_Queue(void);
 void Add_Queue_Item(QUEUE *, char *, void *, size_t);
 QUEUE_ITEM *Get_Queue_Item(QUEUE *);
+int Queue_Empty(QUEUE *);
 void Free_Queue_Item(QUEUE_ITEM *);
+void Delete_Queue(QUEUE *);
 
 #endif
