@@ -12,7 +12,7 @@
 #include "queue.h"
 #include "qalarm.h"
 
-QTHREAD *find_alarm(QALARM *q, pthread_t tid)
+static QTHREAD *find_alarm(QALARM *q, pthread_t tid)
 {
     QTHREAD *qt;
 
@@ -23,7 +23,7 @@ QTHREAD *find_alarm(QALARM *q, pthread_t tid)
     return NULL;
 }
 
-void *main_alarm_handler(void *ctx)
+static void *main_alarm_handler(void *ctx)
 {
     QALARM *q = (QALARM *)ctx;
     QUEUE_ITEM *item;
@@ -40,12 +40,18 @@ void *main_alarm_handler(void *ctx)
             for (qt = q->threads; qt != NULL; qt = qt->next)
                 pthread_join(qt->tid, NULL);
 
+            while (q->threads)
+                delete_alarm(q, q->threads->tid);
+
             Free_Queue_Item(item);
             return NULL;
         } else if (!strcmp(item->action, "Wait")) {
             /* Wait for termination */
             for (qt = q->threads; qt != NULL; qt = qt->next)
                 pthread_join(qt->tid, NULL);
+
+            while (q->threads)
+                delete_alarm(q, q->threads->tid);
 
             Free_Queue_Item(item);
             return NULL;
@@ -69,7 +75,7 @@ void *main_alarm_handler(void *ctx)
     return NULL;
 }
 
-void *inner_alarm_handler(void *ctx)
+static void *inner_alarm_handler(void *ctx)
 {
     QTHREAD *qt = (QTHREAD *)ctx;
     time_t starttime;
@@ -166,7 +172,7 @@ void delete_alarm(QALARM *q, pthread_t tid)
     free(qt);
 }
 
-QALARM *new_alarm(void)
+QALARM *qalarm(void)
 {
     QALARM *q;
 
@@ -185,6 +191,12 @@ QALARM *new_alarm(void)
     pthread_create(&(q->tid), NULL, main_alarm_handler, q);
 
     return q;
+}
+
+void delete_qalarm(QALARM *q)
+{
+    terminate_alarms(q);
+    free(q);
 }
 
 void terminate_alarms(QALARM *q)
@@ -210,25 +222,27 @@ void alarmed(void *data)
 
 int main(int argc, char *argv[])
 {
-    QALARM *qalarm;
+    QALARM *q;
     QTHREAD *qt;
     int i, *j;
 
-    qalarm = new_alarm();
+    q = qalarm();
     for (i=0; i < 10; i++) {
         j = malloc(sizeof(int));
         if (j)
             *j = i;
 
         /* Alarm should activate anywhere between 0-2 seconds. */
-        add_alarm(qalarm, i%2, alarmed, j);
+        add_alarm(q, i%2, alarmed, j);
     }
 
     /* Yeah, I'm lazy */
     if (argv[1])
-        terminate_alarms(qalarm);
+        terminate_alarms(q);
     else
-        wait_alarms(qalarm);
+        wait_alarms(q);
+
+    delete_qalarm(q);
 
     return 0;
 }

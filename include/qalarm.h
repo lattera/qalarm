@@ -31,9 +31,10 @@ typedef struct _qalarm {
     QUEUE *queue;
 } QALARM;
 
-QALARM *new_alarm(void);
+QALARM *qalarm(void);
 int add_alarm(QALARM *, int, qalarm_cb, void *);
 void terminate_alarms(QALARM *);
 void delete_alarm(QALARM *, pthread_t);
+void delete_qalarm(QALARM *);
 
 #endif
