@@ -12,6 +12,10 @@
 #include "queue.h"
 #include "qalarm.h"
 
+#if defined(TEST_CODE)
+#include <signal.h>
+#endif
+
 static QTHREAD *find_alarm(QALARM *q, pthread_t tid)
 {
     QTHREAD *qt;
@@ -32,6 +36,7 @@ static void *main_alarm_handler(void *ctx)
 
     while ((item = Get_Queue_Item(q->queue))) {
         if (!strcmp(item->action, "Terminate")) {
+
             /* Send termination signal */
             for (qt = q->threads; qt != NULL; qt = qt->next)
                 Add_Queue_Item(qt->queue, "Terminate", NULL, 0);
@@ -57,8 +62,6 @@ static void *main_alarm_handler(void *ctx)
             return NULL;
         } else if (!strcmp(item->action, "Destroy")) {
             if (item->sz != sizeof(pthread_t)) {
-                fprintf(stderr, "Destroy action: unknown size: %u. Expected %u\n", item->sz, sizeof(pthread_t));
-
                 Free_Queue_Item(item);
                 continue;
             }
@@ -92,23 +95,28 @@ static void *inner_alarm_handler(void *ctx)
         select(0, NULL, NULL, NULL, &t);
         newtime = qt->timeout - (time(NULL) - starttime);
 
-        if (newtime > 0) {
-            if (!Queue_Empty(qt->queue)) {
-                item = Get_Queue_Item(qt->queue);
-                if (!strcmp(item->action, "Terminate"))
-                    return NULL;
+        if (!Queue_Empty(qt->queue)) {
+            item = Get_Queue_Item(qt->queue);
+            if (!strcmp(item->action, "Terminate")) {
+                Free_Queue_Item(item);
+                return NULL;
             }
+
+            Free_Queue_Item(item);
         }
     }
 
     qt->cb(qt->data);
     
+    if (qt->flags & QALARM_RECUR)
+        add_alarm(qt->parent, qt->timeout, qt->cb, qt->data, qt->flags);
+
     Add_Queue_Item(qt->parent->queue, "Destroy", &(qt->tid), sizeof(pthread_t));
 
     return NULL;
 }
 
-int add_alarm(QALARM *q, int nsecs, qalarm_cb cb, void *data)
+int add_alarm(QALARM *q, int nsecs, qalarm_cb cb, void *data, unsigned long flags)
 {
     QTHREAD *qt;
 
@@ -136,6 +144,7 @@ int add_alarm(QALARM *q, int nsecs, qalarm_cb cb, void *data)
     qt->cb = cb;
     qt->data = data;
     qt->timeout = nsecs;
+    qt->flags = flags;
 
     qt->queue = Initialize_Queue();
     if (!(qt->queue)) {
@@ -213,11 +222,24 @@ void wait_alarms(QALARM *q)
 
 #if defined(TEST_CODE)
 
+void new_sleep(int nsecs)
+{
+    struct timeval tv;
+
+    tv.tv_usec = 0;
+    tv.tv_sec = nsecs;
+
+    select(0, NULL, NULL, NULL, &tv);
+}
+
 void alarmed(void *data)
 {
-    int i=*((int *)data);
+    printf("KABOOM\n");
+}
 
-    printf("KABOOM: %d!\n", i);
+void force_terminate(void *data)
+{
+    terminate_alarms((QALARM *)data);
 }
 
 int main(int argc, char *argv[])
@@ -227,14 +249,11 @@ int main(int argc, char *argv[])
     int i, *j;
 
     q = qalarm();
-    for (i=0; i < 10; i++) {
-        j = malloc(sizeof(int));
-        if (j)
-            *j = i;
 
-        /* Alarm should activate anywhere between 0-2 seconds. */
-        add_alarm(q, i%2, alarmed, j);
-    }
+    add_alarm(q, 15, alarmed, NULL, QALARM_RECUR);
+    add_alarm(q, 22, force_terminate, q, QALARM_DEFAULT);
+
+    new_sleep(30);
 
     /* Yeah, I'm lazy */
     if (argv[1])

@@ -3,6 +3,9 @@
 
 #define POLLSEC 5
 
+#define QALARM_DEFAULT  0
+#define QALARM_RECUR    1
+
 struct _qthread;
 struct _qalarm;
 
@@ -12,6 +15,7 @@ typedef struct _qthread {
     struct _qalarm *parent;
 
     pthread_t tid;
+    unsigned long flags;
     qalarm_cb cb;
     void *data;
 
@@ -32,7 +36,7 @@ typedef struct _qalarm {
 } QALARM;
 
 QALARM *qalarm(void);
-int add_alarm(QALARM *, int, qalarm_cb, void *);
+int add_alarm(QALARM *, int, qalarm_cb, void *, unsigned long);
 void terminate_alarms(QALARM *);
 void delete_alarm(QALARM *, pthread_t);
 void delete_qalarm(QALARM *);
